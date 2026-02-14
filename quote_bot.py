@@ -141,13 +141,19 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             content_text += "\n"
         content_text += "\n".join(attachment_texts)
 
-    # Format the quote with author name and jump link in description
-    formatted_content = f"**{author}**\n{content_text}\n\n[Jump to message]({jump_link})"
+    # Format the quote content with jump link
+    formatted_content = f"{content_text}\n\n[Jump to message]({jump_link})"
 
     # Create embed for the quote
     embed = discord.Embed(
         description=formatted_content,
         color=discord.Color.green()
+    )
+
+    # Add author with profile picture
+    embed.set_author(
+        name=author,
+        icon_url=message.author.display_avatar.url
     )
 
     # Add footer with reaction count only
