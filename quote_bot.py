@@ -15,13 +15,52 @@ intents.reactions = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Track quoted messages to prevent duplicates
-quoted_messages = set()
+# Track quoted messages: {original_message_id: (channel_id, quote_embed_message_id)}
+quoted_messages = {}
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print("------")
+
+async def update_quote_reaction_count(original_msg_id, quotes_channel):
+    """Update the reaction count on an existing quote embed"""
+    try:
+        # Get the channel ID and quote message ID from our tracking dict
+        tracked_info = quoted_messages.get(original_msg_id)
+        if not tracked_info:
+            return
+
+        original_channel_id, quote_msg_id = tracked_info
+
+        # Fetch the original message to get updated reaction count
+        original_channel = bot.get_channel(original_channel_id)
+        if not original_channel:
+            original_channel = await bot.fetch_channel(original_channel_id)
+
+        original_message = await original_channel.fetch_message(original_msg_id)
+
+        # Find the green circle reaction count
+        quote_reaction = None
+        for reaction in original_message.reactions:
+            if str(reaction.emoji) == QUOTE_EMOJI:
+                quote_reaction = reaction
+                break
+
+        if not quote_reaction:
+            return
+
+        # Fetch the quote embed message and update it
+        quote_msg = await quotes_channel.fetch_message(quote_msg_id)
+
+        if quote_msg.embeds:
+            # Update the existing embed
+            embed = quote_msg.embeds[0]
+            embed.set_footer(text=f"🟢 {quote_reaction.count} reactions")
+            await quote_msg.edit(embed=embed)
+
+    except Exception as e:
+        print(f"Error updating quote reaction count: {e}")
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
@@ -29,8 +68,17 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if payload.user_id == bot.user.id:
         return
 
-    # Check if already quoted
+    # Check if already quoted - if so, update the reaction count
     if payload.message_id in quoted_messages:
+        # Get quotes channel first
+        quotes_channel = bot.get_channel(QUOTES_CHANNEL_ID)
+        if quotes_channel is None:
+            try:
+                quotes_channel = await bot.fetch_channel(QUOTES_CHANNEL_ID)
+            except Exception:
+                return
+        # Update existing quote embed with new reaction count
+        await update_quote_reaction_count(payload.message_id, quotes_channel)
         return
 
     # Only care about the green circle emoji
@@ -93,17 +141,26 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             content_text += "\n"
         content_text += "\n".join(attachment_texts)
 
-    # Format as a block quote in Discord
-    quoted_lines = content_text.replace("\n", "\n> ")
-    quote_text = (
-        f"> {quoted_lines}\n"
-        f"— **{author}** in {channel.mention}"
+    # Create embed for the quote
+    embed = discord.Embed(
+        description=content_text,
+        color=discord.Color.green()
     )
 
-    await quotes_channel.send(quote_text)
+    # Add author field
+    embed.set_author(name=author)
 
-    # Mark as quoted to prevent duplicates
-    quoted_messages.add(message.id)
+    # Add footer with reaction count
+    embed.set_footer(text=f"🟢 {quote_reaction.count} reactions")
+
+    # Add jump link as a field
+    embed.add_field(name="Source", value=f"[Jump to message]({jump_link})", inline=False)
+
+    # Send the embed and store the quote message ID
+    quote_msg = await quotes_channel.send(embed=embed)
+
+    # Mark as quoted and store both channel ID and quote message ID for future updates
+    quoted_messages[message.id] = (channel.id, quote_msg.id)
 
 if __name__ == "__main__":
     if not TOKEN:
