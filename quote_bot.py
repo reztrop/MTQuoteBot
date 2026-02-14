@@ -143,18 +143,14 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
     # Create embed for the quote
     embed = discord.Embed(
+        title=author,
         description=content_text,
+        url=jump_link,
         color=discord.Color.green()
     )
 
-    # Add author field
-    embed.set_author(name=author)
-
-    # Add footer with reaction count
+    # Add footer with reaction count only
     embed.set_footer(text=f"🟢 {quote_reaction.count} reactions")
-
-    # Add jump link as a field
-    embed.add_field(name="Source", value=f"[Jump to message]({jump_link})", inline=False)
 
     # Send the embed and store the quote message ID
     quote_msg = await quotes_channel.send(embed=embed)
