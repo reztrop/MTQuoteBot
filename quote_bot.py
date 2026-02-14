@@ -59,6 +59,11 @@ async def update_quote_reaction_count(original_msg_id, quotes_channel):
             embed.set_footer(text=f"🟢 {quote_reaction.count} reactions")
             await quote_msg.edit(embed=embed)
 
+    except discord.NotFound:
+        # Quote message was deleted, remove from tracking so it can be re-posted
+        if original_msg_id in quoted_messages:
+            del quoted_messages[original_msg_id]
+            print(f"Quote message was deleted, removed tracking for message {original_msg_id}")
     except Exception as e:
         print(f"Error updating quote reaction count: {e}")
 
@@ -79,7 +84,11 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
                 return
         # Update existing quote embed with new reaction count
         await update_quote_reaction_count(payload.message_id, quotes_channel)
-        return
+
+        # If update removed the tracking (quote was deleted), continue to re-post
+        # Otherwise, we're done updating
+        if payload.message_id in quoted_messages:
+            return
 
     # Only care about the green circle emoji
     if str(payload.emoji) != QUOTE_EMOJI:
