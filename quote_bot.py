@@ -6,7 +6,7 @@ from discord.ext import commands
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")  # We'll set this in the terminal
 QUOTES_CHANNEL_ID = 1440372391845953606  # <-- replace this with your quotes channel ID
 QUOTE_EMOJI = "🟢"
-MIN_REACTIONS = 1  # You can change this later if you want "needs 3 reacts" etc.
+MIN_REACTIONS = 3
 
 # Intents tell Discord what events we care about
 intents = discord.Intents.default()
@@ -14,6 +14,9 @@ intents.message_content = True
 intents.reactions = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Track quoted messages to prevent duplicates
+quoted_messages = set()
 
 @bot.event
 async def on_ready():
@@ -24,6 +27,10 @@ async def on_ready():
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     # Ignore reactions from the bot itself
     if payload.user_id == bot.user.id:
+        return
+
+    # Check if already quoted
+    if payload.message_id in quoted_messages:
         return
 
     # Only care about the green circle emoji
@@ -52,10 +59,6 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if quote_reaction is None or quote_reaction.count < MIN_REACTIONS:
         return
 
-    # If it's already past the threshold, we assume we already quoted it once
-    if quote_reaction.count > MIN_REACTIONS:
-        return
-
     # Get the quotes channel
     quotes_channel = bot.get_channel(QUOTES_CHANNEL_ID)
     if quotes_channel is None:
@@ -67,11 +70,21 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     author = message.author.display_name
     jump_link = message.jump_url
 
+    # Check if this is a voice message
+    is_voice = message.flags.is_voice_message if hasattr(message.flags, 'is_voice_message') else False
+
     # Build the content of the quote
     if not message.content and not message.attachments:
         content_text = "*[Message had no text]*"
     else:
         content_text = message.content if message.content else ""
+
+    # Add voice message indicator
+    if is_voice:
+        if content_text:
+            content_text = "🎙️ **Voice Message**\n" + content_text
+        else:
+            content_text = "🎙️ **Voice Message**"
 
     # If there are attachments (images, etc.), include their URLs underneath
     if message.attachments:
@@ -88,6 +101,9 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     )
 
     await quotes_channel.send(quote_text)
+
+    # Mark as quoted to prevent duplicates
+    quoted_messages.add(message.id)
 
 if __name__ == "__main__":
     if not TOKEN:
