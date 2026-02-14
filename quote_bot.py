@@ -141,11 +141,12 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             content_text += "\n"
         content_text += "\n".join(attachment_texts)
 
+    # Format the quote with author name and jump link in description
+    formatted_content = f"**{author}**\n{content_text}\n\n[Jump to message]({jump_link})"
+
     # Create embed for the quote
     embed = discord.Embed(
-        title=author,
-        description=content_text,
-        url=jump_link,
+        description=formatted_content,
         color=discord.Color.green()
     )
 
