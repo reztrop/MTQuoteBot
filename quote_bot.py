@@ -63,7 +63,7 @@ async def update_quote_reaction_count(original_msg_id, quotes_channel):
         # Quote message was deleted, remove from tracking so it can be re-posted
         if original_msg_id in quoted_messages:
             del quoted_messages[original_msg_id]
-            print(f"Quote message was deleted, removed tracking for message {original_msg_id}")
+        # Silently handle - this is expected when quotes are manually deleted
     except Exception as e:
         print(f"Error updating quote reaction count: {e}")
 
