@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
 
@@ -18,6 +19,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Track quoted messages: {original_message_id: (channel_id, quote_embed_message_id)}
 quoted_messages = {}
 
+# Lock to prevent concurrent updates to the same message
+update_locks = {}
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
@@ -25,47 +29,59 @@ async def on_ready():
 
 async def update_quote_reaction_count(original_msg_id, quotes_channel):
     """Update the reaction count on an existing quote embed"""
-    try:
-        # Get the channel ID and quote message ID from our tracking dict
-        tracked_info = quoted_messages.get(original_msg_id)
-        if not tracked_info:
-            return
+    # Get or create a lock for this message
+    if original_msg_id not in update_locks:
+        update_locks[original_msg_id] = asyncio.Lock()
 
-        original_channel_id, quote_msg_id = tracked_info
+    lock = update_locks[original_msg_id]
 
-        # Fetch the original message to get updated reaction count
-        original_channel = bot.get_channel(original_channel_id)
-        if not original_channel:
-            original_channel = await bot.fetch_channel(original_channel_id)
+    async with lock:
+        try:
+            # Get the channel ID and quote message ID from our tracking dict
+            tracked_info = quoted_messages.get(original_msg_id)
+            if not tracked_info:
+                return
 
-        original_message = await original_channel.fetch_message(original_msg_id)
+            original_channel_id, quote_msg_id = tracked_info
 
-        # Find the green circle reaction count
-        quote_reaction = None
-        for reaction in original_message.reactions:
-            if str(reaction.emoji) == QUOTE_EMOJI:
-                quote_reaction = reaction
-                break
+            # Fetch the original message to get updated reaction count
+            original_channel = bot.get_channel(original_channel_id)
+            if not original_channel:
+                original_channel = await bot.fetch_channel(original_channel_id)
 
-        if not quote_reaction:
-            return
+            original_message = await original_channel.fetch_message(original_msg_id)
 
-        # Fetch the quote embed message and update it
-        quote_msg = await quotes_channel.fetch_message(quote_msg_id)
+            # Find the green circle reaction count
+            quote_reaction = None
+            for reaction in original_message.reactions:
+                if str(reaction.emoji) == QUOTE_EMOJI:
+                    quote_reaction = reaction
+                    break
 
-        if quote_msg.embeds:
-            # Update the existing embed
-            embed = quote_msg.embeds[0]
-            embed.set_footer(text=f"🟢 {quote_reaction.count} reactions")
-            await quote_msg.edit(embed=embed)
+            if not quote_reaction:
+                return
 
-    except discord.NotFound:
-        # Quote message was deleted, remove from tracking so it can be re-posted
-        if original_msg_id in quoted_messages:
-            del quoted_messages[original_msg_id]
-        # Silently handle - this is expected when quotes are manually deleted
-    except Exception as e:
-        print(f"Error updating quote reaction count: {e}")
+            # Fetch the quote embed message and update it
+            quote_msg = await quotes_channel.fetch_message(quote_msg_id)
+
+            if quote_msg.embeds:
+                # Update the existing embed
+                embed = quote_msg.embeds[0]
+                embed.set_footer(text=f"🟢 {quote_reaction.count} reactions")
+                await quote_msg.edit(embed=embed)
+
+        except discord.NotFound:
+            # Quote message was deleted, remove from tracking so it can be re-posted
+            if original_msg_id in quoted_messages:
+                del quoted_messages[original_msg_id]
+            # Silently handle - this is expected when quotes are manually deleted
+        except Exception as e:
+            # Silently handle other errors to avoid console spam
+            pass
+        finally:
+            # Clean up the lock after we're done
+            if original_msg_id in update_locks:
+                del update_locks[original_msg_id]
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
