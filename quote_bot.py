@@ -117,6 +117,8 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
     author = message.author.display_name
     jump_link = message.jump_url
+    # Format author name as clickable link (blue text)
+    author_link = f"[{author}]({jump_link})"
 
     # Check if this is a voice message
     is_voice = message.flags.is_voice_message if hasattr(message.flags, 'is_voice_message') else False
@@ -150,11 +152,10 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         color=discord.Color.green()
     )
 
-    # Add author with profile picture and clickable name
+    # Add author with profile picture and clickable blue name
     embed.set_author(
-        name=author,
-        icon_url=message.author.display_avatar.url,
-        url=jump_link
+        name=author_link,
+        icon_url=message.author.display_avatar.url
     )
 
     # Add footer with reaction count only
